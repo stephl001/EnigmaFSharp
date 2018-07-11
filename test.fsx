@@ -80,8 +80,8 @@ module Mapping =
     let mapLetter (Mapping mapping) (IndexLetter letterIndex) =
         mapping.[letterIndex]
 
-    let offsetMapping mapping offset = 
-        offsetLetter offset >> mapLetter mapping >> reverseOffsetLetter offset
+    let offsetMapping offset mapper = 
+        offsetLetter offset >> mapper >> reverseOffsetLetter offset
 
 module Rotor =
     let rotorI = {Id=RotorId.I; Notch=Q; Mapping=Mapping.create [|E;K;M;F;L;G;D;Q;V;Z;N;T;O;W;Y;H;X;U;S;P;A;I;B;R;C;J|]}
