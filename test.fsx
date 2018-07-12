@@ -3,20 +3,20 @@ type ReflectorId = A|B|C|ETW
 type Letter = A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z
 type Mapping = private Mapping of Letter array
 
-type Rotor = {
-    Id: RotorId
+type Rotor = private {
     Notch: Letter
     Mapping: Mapping
+    InnerRingOffset: Letter
 }
 
 type Reflector = {
-    Id: ReflectorId
     Mapping: Mapping
 }
 
-type Wheel = {
+type Wheel = private {
     Rotor: Rotor
-    RingSetting: Letter
+    RotorPosition: Letter
+    IsInNotchPosition: bool
 }
 
 type Plugboard = {
@@ -77,6 +77,14 @@ module Mapping =
 
     let inverseMapping = inverseMapping' id
 
+    let private rotate n (Mapping m) =
+        m |> Array.splitAt (n % m.Length) |> (fun (a,b) -> [|b;a|]) |> Array.concat |> create
+
+    let map f (Mapping m) = Array.map f m |> create
+
+    let shiftMapping (IndexLetter shiftIndex) = 
+        rotate shiftIndex >> map (Letter.reverseOffsetLetter shiftIndex)
+
     let mapLetter (Mapping mapping) (IndexLetter letterIndex) =
         mapping.[letterIndex]
 
@@ -84,14 +92,52 @@ module Mapping =
         offsetLetter offset >> mapper >> reverseOffsetLetter offset
 
 module Rotor =
-    let rotorI = {Id=RotorId.I; Notch=Q; Mapping=Mapping.create [|E;K;M;F;L;G;D;Q;V;Z;N;T;O;W;Y;H;X;U;S;P;A;I;B;R;C;J|]}
-    let rotorII = {Id=II; Notch=E; Mapping=Mapping.create [|A;J;D;K;S;I;R;U;X;B;L;H;W;T;M;C;Q;G;Z;N;P;Y;F;V;O;E|]}
-    let rotorIII = {Id=III; Notch=V; Mapping=Mapping.create [|B;D;F;H;J;L;C;P;R;T;X;V;Z;N;Y;E;I;W;G;A;K;M;U;S;Q;O|]}
-    let rotorIV = {Id=IV; Notch=J; Mapping=Mapping.create [|E;S;O;V;P;Z;J;A;Y;Q;U;I;R;H;X;L;N;F;T;G;K;D;C;M;W;B|]}
-    let rotorV = {Id=RotorId.V; Notch=Z; Mapping=Mapping.create [|V;Z;B;R;G;I;T;Y;U;P;S;D;N;H;L;X;A;W;M;J;Q;O;F;E;C;K|]}
+    let rotorI = {Notch=Q; Mapping=Mapping.create [|E;K;M;F;L;G;D;Q;V;Z;N;T;O;W;Y;H;X;U;S;P;A;I;B;R;C;J|]; InnerRingOffset=A}
+    let rotorII = {Notch=E; Mapping=Mapping.create [|A;J;D;K;S;I;R;U;X;B;L;H;W;T;M;C;Q;G;Z;N;P;Y;F;V;O;E|]; InnerRingOffset=A}
+    let rotorIII = {Notch=V; Mapping=Mapping.create [|B;D;F;H;J;L;C;P;R;T;X;V;Z;N;Y;E;I;W;G;A;K;M;U;S;Q;O|]; InnerRingOffset=A}
+    let rotorIV = {Notch=J; Mapping=Mapping.create [|E;S;O;V;P;Z;J;A;Y;Q;U;I;R;H;X;L;N;F;T;G;K;D;C;M;W;B|]; InnerRingOffset=A}
+    let rotorV = {Notch=Z; Mapping=Mapping.create [|V;Z;B;R;G;I;T;Y;U;P;S;D;N;H;L;X;A;W;M;J;Q;O;F;E;C;K|]; InnerRingOffset=A}
 
 module Reflector = 
-    let reflectorA = {Id=ReflectorId.A; Mapping=Mapping.create [|E;J;M;Z;A;L;Y;X;V;B;W;F;C;R;Q;U;O;N;T;S;P;I;K;H;G;D|]}
-    let reflectorB = {Id=ReflectorId.B; Mapping=Mapping.create [|Y;R;U;H;Q;S;L;D;P;X;N;G;O;K;M;I;E;B;F;Z;C;W;V;J;A;T|]}
-    let reflectorC = {Id=ReflectorId.C; Mapping=Mapping.create [|F;V;P;J;I;A;O;Y;E;D;R;Z;X;W;G;C;T;K;U;Q;S;B;N;M;H;L|]}
-    let reflectorETW = {Id=ETW; Mapping=Mapping.id}
+    let reflectorA = {Mapping=Mapping.create [|E;J;M;Z;A;L;Y;X;V;B;W;F;C;R;Q;U;O;N;T;S;P;I;K;H;G;D|]}
+    let reflectorB = {Mapping=Mapping.create [|Y;R;U;H;Q;S;L;D;P;X;N;G;O;K;M;I;E;B;F;Z;C;W;V;J;A;T|]}
+    let reflectorC = {Mapping=Mapping.create [|F;V;P;J;I;A;O;Y;E;D;R;Z;X;W;G;C;T;K;U;Q;S;B;N;M;H;L|]}
+    let reflectorETW = {Mapping=Mapping.id}
+
+module Wheel =
+    open Letter
+
+    let setup startPos rotor = {
+        Rotor = rotor
+        RotorPosition = startPos
+        IsInNotchPosition = (rotor.Notch = startPos)
+    } 
+
+    let setupDefault = setup A
+
+    let private offsetOneLetter = offsetLetter 1
+    let advance wheel = 
+        let newPos = wheel.RotorPosition |> offsetOneLetter
+        { wheel with 
+            RotorPosition=newPos
+            IsInNotchPosition = (wheel.Rotor.Notch = newPos)
+        }
+
+    let private innerRingMapper wheel mapping = 
+        mapping
+        |> Mapping.shiftMapping wheel.Rotor.InnerRingOffset
+        |> Mapping.mapLetter
+
+    let private mapLetterWithMapping wheel mapping = 
+        let (IndexLetter indLetter) = wheel.RotorPosition
+        mapping
+        |> innerRingMapper wheel
+        |> Mapping.offsetMapping indLetter
+
+    let mapLetter wheel =
+        mapLetterWithMapping wheel wheel.Rotor.Mapping
+
+    let reverseMapLetter wheel =
+        wheel.Rotor.Mapping 
+        |> Mapping.inverseMapping
+        |> mapLetterWithMapping wheel
