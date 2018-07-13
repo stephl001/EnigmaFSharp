@@ -7,18 +7,13 @@ type Rotor = private {
     InnerRingOffset: Letter
 }
 
-type Reflector = {
-    Mapping: Mapping
-}
+type Reflector = Reflector of Mapping
+type Plugboard = Plugboard of Mapping
 
 type Wheel = private {
     Rotor: Rotor
     RotorPosition: Letter
     IsInNotchPosition: bool
-}
-
-type Plugboard = {
-    Mapping: Mapping
 }
 
 type EnigmaMachine = {
@@ -28,8 +23,6 @@ type EnigmaMachine = {
     Wheel3: Wheel
     Reflector: Reflector
 }
-
-type Encoder = EnigmaMachine -> Letter -> Letter
 
 module Letter =
     [<Literal>] 
@@ -55,7 +48,7 @@ module Letter =
     let offsetLetter offset (IndexLetter letterIndex) =
         (letterIndex + offset) |> fromModIndex
 
-    let reverseOffsetLetter offset = offsetLetter (-offset)
+    let reverseOffsetLetter = (~-) >> offsetLetter
 
 module Mapping =
     open Letter
@@ -66,21 +59,17 @@ module Mapping =
         then failwith "A mapping must be composed of 26 distinct letters"
         else Mapping letters
 
-    let fromString (strMapping:string) = 
-        strMapping 
-        |> (Seq.map charToLetter >> Array.ofSeq >> create)
+    let fromString = Seq.map charToLetter >> Array.ofSeq >> create
           
-    let id = Mapping [|A;B;C;D;E;F;G;H;I;J;K;L;M;N;O;P;Q;R;S;T;U;V;W;X;Y;Z|]
+    let id = fromString {'A' .. 'Z'}
 
     let private inverseMapping' (Mapping idMap) (Mapping mapping) =
-        (idMap, mapping) 
-        ||> Array.zip
+        Array.zip idMap mapping
         |> Array.sortBy snd
         |> Array.map fst
         |> create
-
     let inverseMapping = inverseMapping' id
-
+    
     let private rotate n (Mapping m) =
         m |> Array.splitAt (n % m.Length) |> (fun (a,b) -> [|b;a|]) |> Array.concat |> create
 
@@ -105,12 +94,12 @@ module Rotor =
     let rotorV = {Notch=Z; Mapping=Mapping.fromString "VZBRGITYUPSDNHLXAWMJQOFECK"; InnerRingOffset=A}
 
 module Reflector = 
-    let (reflectorA:Reflector) = {Mapping=Mapping.fromString "EJMZALYXVBWFCRQUONTSPIKHGD"}
-    let (reflectorB:Reflector) = {Mapping=Mapping.fromString "YRUHQSLDPXNGOKMIEBFZCWVJAT"}
-    let (reflectorC:Reflector) = {Mapping=Mapping.fromString "FVPJIAOYEDRZXWGCTKUQSBNMHL"}
-    let (reflectorETW:Reflector) = {Mapping=Mapping.id}
+    let reflectorA = Reflector (Mapping.fromString "EJMZALYXVBWFCRQUONTSPIKHGD")
+    let reflectorB = Reflector (Mapping.fromString "YRUHQSLDPXNGOKMIEBFZCWVJAT")
+    let reflectorC = Reflector (Mapping.fromString "FVPJIAOYEDRZXWGCTKUQSBNMHL")
+    let reflectorETW = Reflector Mapping.id
 
-    let mapLetter (reflector:Reflector) = reflector.Mapping |> Mapping.mapLetter
+    let mapLetter (Reflector mapping) = mapping |> Mapping.mapLetter
 
 module Wheel =
     open Letter
@@ -123,9 +112,8 @@ module Wheel =
 
     let setupDefault = setup A
 
-    let private offsetOneLetter = offsetLetter 1
     let advance wheel = 
-        let newPos = wheel.RotorPosition |> offsetOneLetter
+        let newPos = wheel.RotorPosition |> offsetLetter 1
         { wheel with 
             RotorPosition=newPos
             IsInNotchPosition = (wheel.Rotor.Notch = newPos)
@@ -150,8 +138,8 @@ module Wheel =
         wheel |> mapLetterWithMapping inverseMapping
 
 module Plugboard =
-    let mapLetter plugboard = plugboard.Mapping |> Mapping.mapLetter
-    let reverseMapLetter plugboard = plugboard.Mapping |> Mapping.reverseMapLetter
+    let mapLetter (Plugboard mapping) = mapping |> Mapping.mapLetter
+    let reverseMapLetter (Plugboard mapping) = mapping |> Mapping.reverseMapLetter
 
 module EnigmaMachine =
     let mapLetter machine =
