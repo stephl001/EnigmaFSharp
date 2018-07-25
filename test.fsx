@@ -1,14 +1,12 @@
 type Letter = A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z
 type Mapping = private Mapping of Letter array
+type Mapper = Letter -> Letter
 
 type Rotor = private {
     Notch: Letter
-    Mapping: Mapping
+    Mapper: Mapper
     InnerRingOffset: Letter
 }
-
-type Reflector = Reflector of Mapping
-type Plugboard = Plugboard of Mapping
 
 type Wheel = private {
     Rotor: Rotor
@@ -17,11 +15,11 @@ type Wheel = private {
 }
 
 type EnigmaMachine = {
-    Plugboard: Plugboard
+    Plugboard: Mapper
     Wheel1: Wheel
     Wheel2: Wheel
     Wheel3: Wheel
-    Reflector: Reflector
+    Reflector: Mapper
 }
 
 module Letter =
@@ -40,14 +38,10 @@ module Letter =
         | _ -> failwith "Index out of range"
 
     let charToLetter (c:char) = int c - int 'A' |> fromIndex
-
     let (%+) m n = (((m % n) + n) % n)
     let modAlphabet x = x %+ LettersCount
     let fromModIndex = modAlphabet >> fromIndex
-
-    let offsetLetter offset (IndexLetter letterIndex) =
-        (letterIndex + offset) |> fromModIndex
-
+    let offsetLetter offset (IndexLetter letterIndex) = (letterIndex + offset) |> fromModIndex
     let reverseOffsetLetter = (~-) >> offsetLetter
 
 module Mapping =
@@ -60,49 +54,50 @@ module Mapping =
         else Mapping letters
 
     let fromString = Seq.map charToLetter >> Array.ofSeq >> create
-          
     let id = fromString {'A' .. 'Z'}
-
-    let private inverseMapping' (Mapping idMap) (Mapping mapping) =
-        Array.zip idMap mapping
-        |> Array.sortBy snd
-        |> Array.map fst
-        |> create
-    let inverseMapping = inverseMapping' id
-    
-    let private rotate n (Mapping m) =
-        m |> Array.splitAt (n % m.Length) |> (fun (a,b) -> [|b;a|]) |> Array.concat |> create
-
-    let map f (Mapping m) = Array.map f m |> create
-
-    let shiftMapping (IndexLetter shiftIndex) = 
-        rotate shiftIndex >> map (Letter.reverseOffsetLetter shiftIndex)
+    let map f (Mapping m) = Array.map f m
 
     let mapLetter (Mapping mapping) (IndexLetter letterIndex) =
         mapping.[letterIndex]
 
-    let reverseMapLetter = inverseMapping >> mapLetter
+module Mapper =
+    open Letter
+    open Mapping
 
-    let offsetMapping offset mapper = 
+    let fromArray = create >> mapLetter
+
+    let reverseMapper (mapper:Mapper) : Mapper =
+        id
+        |> map (fun l -> (l,mapper l)) 
+        |> Array.sortBy snd 
+        |> Array.map fst
+        |> fromArray
+
+    let offsetMapper (IndexLetter offset) (mapper:Mapper) : Mapper = 
         offsetLetter offset >> mapper >> reverseOffsetLetter offset
 
+    let fromString = Mapping.fromString >> mapLetter
+    let id = Mapping.id |> mapLetter
+
 module Rotor =
-    let rotorI = {Notch=Q; Mapping=Mapping.fromString "EKMFLGDQVZNTOWYHXUSPAIBRCJ"; InnerRingOffset=A}
-    let rotorII = {Notch=E; Mapping=Mapping.fromString "AJDKSIRUXBLHWTMCQGZNPYFVOE"; InnerRingOffset=A}
-    let rotorIII = {Notch=V; Mapping=Mapping.fromString "BDFHJLCPRTXVZNYEIWGAKMUSQO"; InnerRingOffset=A}
-    let rotorIV = {Notch=J; Mapping=Mapping.fromString "ESOVPZJAYQUIRHXLNFTGKDCMWB"; InnerRingOffset=A}
-    let rotorV = {Notch=Z; Mapping=Mapping.fromString "VZBRGITYUPSDNHLXAWMJQOFECK"; InnerRingOffset=A}
+    let create ringOffset notch mapping =
+        {Notch=notch; Mapper=Mapper.fromString mapping; InnerRingOffset=ringOffset}
+    let createDefault = create A
+    let rotorI = createDefault Q "EKMFLGDQVZNTOWYHXUSPAIBRCJ"
+    let rotorII = createDefault E "AJDKSIRUXBLHWTMCQGZNPYFVOE"
+    let rotorIII = createDefault V "BDFHJLCPRTXVZNYEIWGAKMUSQO"
+    let rotorIV = createDefault J "ESOVPZJAYQUIRHXLNFTGKDCMWB"
+    let rotorV = createDefault Z "VZBRGITYUPSDNHLXAWMJQOFECK"
 
 module Reflector = 
-    let reflectorA = Reflector (Mapping.fromString "EJMZALYXVBWFCRQUONTSPIKHGD")
-    let reflectorB = Reflector (Mapping.fromString "YRUHQSLDPXNGOKMIEBFZCWVJAT")
-    let reflectorC = Reflector (Mapping.fromString "FVPJIAOYEDRZXWGCTKUQSBNMHL")
-    let reflectorETW = Reflector Mapping.id
-
-    let mapLetter (Reflector mapping) = mapping |> Mapping.mapLetter
+    let reflectorA = Mapper.fromString "EJMZALYXVBWFCRQUONTSPIKHGD"
+    let reflectorB = Mapper.fromString "YRUHQSLDPXNGOKMIEBFZCWVJAT"
+    let reflectorC = Mapper.fromString "FVPJIAOYEDRZXWGCTKUQSBNMHL"
+    let reflectorETW = Mapper.id
 
 module Wheel =
     open Letter
+    open Mapper
 
     let setup startPos rotor = {
         Rotor = rotor
@@ -119,39 +114,19 @@ module Wheel =
             IsInNotchPosition = (wheel.Rotor.Notch = newPos)
         }
 
-    let private innerRingMapper mapping wheel = 
-        mapping
-        |> Mapping.shiftMapping wheel.Rotor.InnerRingOffset
-        |> Mapping.mapLetter
-
-    let private mapLetterWithMapping mapping wheel = 
-        let (IndexLetter indLetter) = wheel.RotorPosition
-        wheel
-        |> innerRingMapper mapping
-        |> Mapping.offsetMapping indLetter
-
-    let mapLetter wheel =
-        mapLetterWithMapping wheel.Rotor.Mapping wheel 
-
-    let reverseMapLetter wheel =
-        let inverseMapping = wheel.Rotor.Mapping |> Mapping.inverseMapping
-        wheel |> mapLetterWithMapping inverseMapping
-
-module Plugboard =
-    let mapLetter (Plugboard mapping) = mapping |> Mapping.mapLetter
-    let reverseMapLetter (Plugboard mapping) = mapping |> Mapping.reverseMapLetter
+    let getMapper (wheel:Wheel) = 
+        wheel.Rotor.Mapper 
+        |> offsetMapper wheel.Rotor.InnerRingOffset
+        |> offsetMapper wheel.RotorPosition
 
 module EnigmaMachine =
-    let mapLetter machine =
-        [
-            machine.Plugboard |> Plugboard.mapLetter
-            machine.Wheel3 |> Wheel.mapLetter
-            machine.Wheel2 |> Wheel.mapLetter
-            machine.Wheel1 |> Wheel.mapLetter
-            machine.Reflector |> Reflector.mapLetter
-            machine.Wheel1 |> Wheel.reverseMapLetter
-            machine.Wheel2 |> Wheel.reverseMapLetter
-            machine.Wheel3 |> Wheel.reverseMapLetter
-            machine.Plugboard |> Plugboard.reverseMapLetter
-        ]
+    let private wheelMappers machine = 
+        [machine.Wheel3;machine.Wheel2;machine.Wheel1]
+        |> List.map Wheel.getMapper
         |> List.reduce (>>)
+
+    let mapLetter machine =
+        let forwardMapper = machine.Plugboard >> wheelMappers machine
+        let reverseMapper = forwardMapper |> Mapper.reverseMapper
+        
+        forwardMapper >> machine.Reflector >> reverseMapper
