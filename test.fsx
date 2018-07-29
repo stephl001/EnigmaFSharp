@@ -142,11 +142,11 @@ module EnigmaMachine =
                             FastSocket=fs|>Socket.advance }
         | _ -> { machine with FastSocket=fs|>Socket.advance }
 
-    let encodeMessage machine (msg:Letter list) =
+    let encodeMessage machine msg =
         let rec encodeMessage' acc machine' = function
         | [] -> acc
         | l::rest -> encodeMessage' ((mapLetter machine' l)::acc) (advanceRotors machine') rest
 
-        msg |> encodeMessage' [] machine
+        msg |> encodeMessage' [] machine |> List.rev
 
     let encodeString machine = Letter.strLetters >> encodeMessage machine >> String.Concat
