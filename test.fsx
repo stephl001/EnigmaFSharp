@@ -1,4 +1,5 @@
 type Letter = A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z
+open System
 type Mapping = private Mapping of Letter array
 type Mapper = Letter -> Letter
 
@@ -16,9 +17,9 @@ type Wheel = private {
 
 type EnigmaMachine = {
     Plugboard: Mapper
-    Wheel1: Wheel
-    Wheel2: Wheel
-    Wheel3: Wheel
+    SlowSocket: Wheel
+    MiddleSocket: Wheel
+    FastSocket: Wheel
     Reflector: Mapper
 }
 
@@ -43,6 +44,8 @@ module Letter =
     let fromModIndex = modAlphabet >> fromIndex
     let offsetLetter offset (IndexLetter letterIndex) = (letterIndex + offset) |> fromModIndex
     let reverseOffsetLetter = (~-) >> offsetLetter
+    let strLetters (str:string) = 
+        str |> List.ofSeq |> List.filter Char.IsLetter |> List.map charToLetter
 
 module Mapping =
     open Letter
@@ -95,7 +98,7 @@ module Reflector =
     let reflectorC = Mapper.fromString "FVPJIAOYEDRZXWGCTKUQSBNMHL"
     let reflectorETW = Mapper.id
 
-module Wheel =
+module Socket =
     open Letter
     open Mapper
 
@@ -107,22 +110,22 @@ module Wheel =
 
     let setupDefault = setup A
 
-    let advance wheel = 
-        let newPos = wheel.RotorPosition |> offsetLetter 1
-        { wheel with 
+    let advance socket = 
+        let newPos = socket.RotorPosition |> offsetLetter 1
+        { socket with 
             RotorPosition=newPos
-            IsInNotchPosition = (wheel.Rotor.Notch = newPos)
+            IsInNotchPosition = (socket.Rotor.Notch = newPos)
         }
 
-    let getMapper (wheel:Wheel) = 
-        wheel.Rotor.Mapper 
-        |> offsetMapper wheel.Rotor.InnerRingOffset
-        |> offsetMapper wheel.RotorPosition
+    let getMapper (socket:Wheel) = 
+        socket.Rotor.Mapper 
+        |> offsetMapper socket.Rotor.InnerRingOffset
+        |> offsetMapper socket.RotorPosition
 
 module EnigmaMachine =
     let private wheelMappers machine = 
-        [machine.Wheel3;machine.Wheel2;machine.Wheel1]
-        |> List.map Wheel.getMapper
+        [machine.FastSocket;machine.MiddleSocket;machine.SlowSocket]
+        |> List.map Socket.getMapper
         |> List.reduce (>>)
 
     let mapLetter machine =
@@ -130,3 +133,20 @@ module EnigmaMachine =
         let reverseMapper = forwardMapper |> Mapper.reverseMapper
         
         forwardMapper >> machine.Reflector >> reverseMapper
+
+    let advanceRotors (machine:EnigmaMachine) =
+        let (ms,fs) = (machine.MiddleSocket,machine.FastSocket)
+        match (ms.IsInNotchPosition,fs.IsInNotchPosition) with
+        | (true,_) -> { machine with 
+                            MiddleSocket=ms|>Socket.advance
+                            FastSocket=fs|>Socket.advance }
+        | _ -> { machine with FastSocket=fs|>Socket.advance }
+
+    let encodeMessage machine (msg:Letter list) =
+        let rec encodeMessage' acc machine' = function
+        | [] -> acc
+        | l::rest -> encodeMessage' ((mapLetter machine' l)::acc) (advanceRotors machine') rest
+
+        msg |> encodeMessage' [] machine
+
+    let encodeString machine = Letter.strLetters >> encodeMessage machine >> String.Concat
