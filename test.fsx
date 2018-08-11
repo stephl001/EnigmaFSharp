@@ -147,6 +147,17 @@ module EnigmaMachine =
         | [] -> acc
         | l::rest -> encodeMessage' ((mapLetter machine' l)::acc) (advanceRotors machine') rest
 
-        msg |> encodeMessage' [] machine |> List.rev
+        msg |> encodeMessage' [] (advanceRotors machine) |> List.rev
 
-    let encodeString machine = Letter.strLetters >> encodeMessage machine >> String.Concat
+    let private encodableString : (string->string) = 
+        Seq.filter Char.IsLetter >> Seq.map Char.ToUpperInvariant >> String.Concat
+    let encodeString machine = encodableString >> Letter.strLetters >> encodeMessage machine >> String.Concat
+
+    let defaultMachine = 
+       { 
+           FastSocket = Socket.setupDefault Rotor.rotorIII
+           MiddleSocket = Socket.setupDefault Rotor.rotorII
+           SlowSocket = Socket.setupDefault Rotor.rotorI
+           Plugboard = Mapper.id
+           Reflector = Reflector.reflectorB
+       }
