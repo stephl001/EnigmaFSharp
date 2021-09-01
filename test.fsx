@@ -142,16 +142,28 @@ module EnigmaMachine =
                             FastSocket=fs|>Socket.advance }
         | _ -> { machine with FastSocket=fs|>Socket.advance }
 
-    let encodeMessage machine msg =
-        let rec encodeMessage' acc machine' = function
-        | [] -> acc
-        | l::rest -> encodeMessage' ((mapLetter machine' l)::acc) (advanceRotors machine') rest
+    let encodeLetter machine letter =
+        let newMachine = machine |> advanceRotors
+        let encodedLetter = mapLetter newMachine letter
+        (newMachine, encodedLetter)
 
-        msg |> encodeMessage' [] (advanceRotors machine) |> List.rev
+    let nextState (machine,encoded) letter =
+        let (newMachine,encodedLetter) = encodeLetter machine letter
+        (newMachine, encodedLetter::encoded)
+
+    let encodeMessage machine =
+        List.fold nextState (machine,[]) >> snd >> List.rev
 
     let private encodableString : (string->string) = 
-        Seq.filter Char.IsLetter >> Seq.map Char.ToUpperInvariant >> String.Concat
-    let encodeString machine = encodableString >> Letter.strLetters >> encodeMessage machine >> String.Concat
+        Seq.filter Char.IsLetter 
+        >> Seq.map Char.ToUpperInvariant 
+        >> String.Concat
+    
+    let encodeString machine = 
+        encodableString 
+        >> Letter.strLetters 
+        >> encodeMessage machine 
+        >> String.Concat
 
     let defaultMachine = 
        { 
